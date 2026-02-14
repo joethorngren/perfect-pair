@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy script - syncs generated style to Claude Code and Cursor
+# Deploy script - syncs generated style to Claude Code, Cursor, Gemini CLI, and Codex CLI
 
 set -e
 
@@ -152,6 +152,74 @@ if [ -d "$CURSOR_REPO_DIR" ]; then
     echo "  Repo version updated (for sharing)"
 fi
 
+# ─── Deploy to Gemini CLI ─────────────────────────────────────────
+
+GEMINI_DIR="$HOME/.gemini"
+GEMINI_MD="$GEMINI_DIR/GEMINI.md"
+GEMINI_STYLE="$GEMINI_DIR/perfect-pair-style.md"
+GEMINI_DOTFILES_DIR="$DOTFILES_AI_DIR/gemini-cli/.gemini"
+
+echo "Deploying to Gemini CLI..."
+
+# Strip YAML frontmatter (lines between --- markers) for Gemini
+GEMINI_CONTENT=$(awk 'BEGIN{skip=0} /^---$/{skip++; next} skip<2{next} {print}' "$SOURCE_FILE")
+
+# Detect dotfiles-ai stow management for Gemini
+GEMINI_DEPLOY_DIR="$GEMINI_DIR"
+if is_stow_managed "$GEMINI_MD" && [ -d "$GEMINI_DOTFILES_DIR" ]; then
+    echo "  Detected dotfiles-ai stow management, writing to ~/.dotfiles-ai/gemini-cli/..."
+    GEMINI_DEPLOY_DIR="$GEMINI_DOTFILES_DIR"
+fi
+
+# Write the style file
+echo "$GEMINI_CONTENT" > "$GEMINI_DEPLOY_DIR/perfect-pair-style.md"
+echo "  Style file written"
+
+# Add @import to GEMINI.md if not already present
+GEMINI_MD_TARGET="$GEMINI_DEPLOY_DIR/GEMINI.md"
+if [ -f "$GEMINI_MD_TARGET" ]; then
+    if ! grep -q '@perfect-pair-style.md' "$GEMINI_MD_TARGET" 2>/dev/null; then
+        # Add import at the top, before any existing content
+        {
+            echo "@perfect-pair-style.md"
+            echo ""
+            cat "$GEMINI_MD_TARGET"
+        } > "$GEMINI_MD_TARGET.tmp"
+        mv "$GEMINI_MD_TARGET.tmp" "$GEMINI_MD_TARGET"
+        echo "  Added @import to GEMINI.md"
+    else
+        echo "  @import already present in GEMINI.md"
+    fi
+else
+    echo "@perfect-pair-style.md" > "$GEMINI_MD_TARGET"
+    echo "  Created GEMINI.md with @import"
+fi
+echo "  Gemini CLI updated"
+
+# ─── Deploy to Codex CLI ──────────────────────────────────────────
+
+CODEX_DIR="$HOME/.codex"
+CODEX_AGENTS="$CODEX_DIR/AGENTS.md"
+CODEX_DOTFILES_DIR="$DOTFILES_AI_DIR/codex-cli/.codex"
+
+echo "Deploying to Codex CLI..."
+
+# Strip YAML frontmatter for Codex
+CODEX_CONTENT=$(awk 'BEGIN{skip=0} /^---$/{skip++; next} skip<2{next} {print}' "$SOURCE_FILE")
+
+# Detect dotfiles-ai stow management for Codex
+CODEX_DEPLOY_DIR="$CODEX_DIR"
+if is_stow_managed "$CODEX_DIR" && [ -d "$CODEX_DOTFILES_DIR" ]; then
+    echo "  Detected dotfiles-ai stow management, writing to ~/.dotfiles-ai/codex-cli/..."
+    CODEX_DEPLOY_DIR="$CODEX_DOTFILES_DIR"
+fi
+
+# Write AGENTS.md (this is the global instruction file for Codex CLI)
+echo "$CODEX_CONTENT" > "$CODEX_DEPLOY_DIR/AGENTS.md"
+echo "  Codex CLI updated"
+
+# ─── Summary ──────────────────────────────────────────────────────
+
 echo ""
 echo "Deployment complete!"
 echo ""
@@ -166,7 +234,19 @@ if [ "$CURSOR_DEPLOY_DIR" = "$CURSOR_DOTFILES_DIR" ]; then
 else
     echo "  - Cursor: ~/.cursor/rules/perfect-pair.mdc (global)"
 fi
+if [ "$GEMINI_DEPLOY_DIR" = "$GEMINI_DOTFILES_DIR" ]; then
+    echo "  - Gemini CLI: ~/.dotfiles-ai/gemini-cli/.gemini/perfect-pair-style.md"
+else
+    echo "  - Gemini CLI: ~/.gemini/perfect-pair-style.md"
+fi
+if [ "$CODEX_DEPLOY_DIR" = "$CODEX_DOTFILES_DIR" ]; then
+    echo "  - Codex CLI: ~/.dotfiles-ai/codex-cli/.codex/AGENTS.md"
+else
+    echo "  - Codex CLI: ~/.codex/AGENTS.md"
+fi
 echo ""
 echo "Next steps:"
 echo "  - Restart Claude Code to see changes"
 echo "  - Cursor will automatically use the global rules in all projects"
+echo "  - Gemini CLI will pick up changes on next session (or /memory refresh)"
+echo "  - Codex CLI will pick up changes on next session"
