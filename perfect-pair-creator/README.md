@@ -1,6 +1,6 @@
 # Perfect Pair Creator
 
-A personalized pair programming partner for Cursor IDE and Claude Code - witty, agile-minded, and knows your cultural references.
+A personalized pair programming partner for Cursor IDE, Claude Code, Gemini CLI, and Codex CLI — witty, agile-minded, and knows your cultural references.
 
 ## What This Does
 
@@ -11,55 +11,67 @@ Creates a custom programming partner that acts like your ideal pair, complete wi
 - Agile-minded thinking tuned to your preferences
 - A communication style that matches your vibe
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Clone the Repo
 
 ```bash
-git clone https://github.com/joethorngren/perfect-pair-creator.git
-cd perfect-pair-creator
+git clone https://github.com/joethorngren/perfect-pair.git
+cd perfect-pair/perfect-pair-creator
 ```
 
-### 2. Deploy to Your Editors
+### 2. Deploy to Your Tools
 
 ```bash
-# Deploys to both Cursor (global) and Claude Code
+# Deploys to all 4 tools
 ./scripts/sync.sh
 ```
 
 That's it! Perfect Pair is now active in:
-- ✅ **Cursor** - All projects automatically (`~/.cursor/rules/`)
-- ✅ **Claude Code** - All sessions automatically (`~/.claude/plugins/`)
+- **Cursor** — All projects automatically (`~/.cursor/rules/perfect-pair.mdc`)
+- **Claude Code** — All sessions via SessionStart hook (`~/.claude/plugins/user/perfect-pair-output-style/`)
+- **Gemini CLI** — All sessions via `@import` (`~/.gemini/perfect-pair-style.md`)
+- **Codex CLI** — All sessions via global instructions (`~/.codex/AGENTS.md`)
 
-### 3. Customize Your References
+### 3. Customize
 
 ```bash
 # Edit your reference library
-open source/references.yaml  # or use any editor
+open source/references.yaml
 
-# Add your favorite shows to core or rotating_pool
+# Adjust personality (roast level, agile intensity, etc.)
+open source/config.yaml
 
-# Sync changes everywhere
+# Rebuild and deploy
 ./scripts/sync.sh
 ```
 
-## 📚 Documentation
+## Documentation
 
-- **[WORKFLOW.md](WORKFLOW.md)** - Daily workflow guide
-- **[CURSOR-README.md](cursor-versions/CURSOR-README.md)** - Cursor-specific details
-- **[CURSOR-SKILLS-README.md](cursor-versions/CURSOR-SKILLS-README.md)** - Cursor 2.4+ interactive skill
+- **[WORKFLOW.md](WORKFLOW.md)** — Daily workflow guide
+- **[CLAUDE.md](CLAUDE.md)** — Build system architecture (for AI assistants)
+- **[CURSOR-README.md](cursor-versions/CURSOR-README.md)** — Cursor-specific details
 
-## 🎯 How It Works
+## How It Works
+
+### Build Pipeline
+
+```
+source/references.yaml    ──┐
+source/config.yaml        ──┼──> build.py ──> generated/perfect-pair-current.md
+source/perfect-pair-base.md ┘    (via .venv + PyYAML)
+                                         ↓
+                                   deploy.sh
+                                         ↓
+             ┌──────────┬──────────┬──────────┐
+             ↓          ↓          ↓          ↓
+      ~/.cursor/  ~/.claude/  ~/.gemini/  ~/.codex/
+      rules/      plugins/   style.md    AGENTS.md
+```
 
 ### Single Source of Truth
 
-All your references live in one place:
-
-```
-source/references.yaml
-```
-
-Edit this file to add/remove shows, then run `./scripts/sync.sh` to deploy everywhere.
+All your references live in `source/references.yaml`. Edit this file, run `./scripts/sync.sh`, done.
 
 ### Reference Library System
 
@@ -71,145 +83,109 @@ core:
     examples: ["Michael Scott's 'that's what she said'"]
 
 rotating_pool:
-  # Rotates in/out to manage context
+  # Rotates in/out to manage context (5 active at a time)
   - name: "Community"
     usage: "Meta discussions"
     examples: ["Cool cool cool"]
 ```
 
-**Current**: All core + 5 rotating refs active (9 total)
-**Future**: Smart rotation when library grows beyond 15-20 refs
+### Config-Driven Personality
 
-### Build & Deploy
+`source/config.yaml` settings actively shape the generated output:
 
-```bash
-./scripts/sync.sh
-```
+| Setting | Range | Effect |
+|---------|-------|--------|
+| `roast_level` | 1-4 | Controls roast intensity and number of examples |
+| `agile_intensity` | 1-4 | Scales from practical tips to full evangelist |
+| `pushback_style` | 1-4 | Ranges from trust-based to devil's advocate |
+| `formality` | 1-4 | Adjusts tone from professional to best-friend casual |
 
-This:
-1. Reads `source/references.yaml`
-2. Generates complete style from template
-3. Deploys to Cursor global rules
-4. Deploys to Claude Code plugin
-5. Updates repo version for sharing
+### dotfiles-ai Integration
 
-## 🎭 Example Styles
+Deploy detects [GNU Stow](https://www.gnu.org/software/stow/) symlinks managed by `~/.dotfiles-ai/` and writes to the repo paths directly, keeping your dotfiles clean.
+
+## Example Styles
 
 We've included **5 pre-made styles** with different personalities:
 
-1. **Original Perfect Pair** - Sharp wit, mix of comedy styles
-2. **Office Comedy Fan** - Supportive, wholesome
-3. **Sci-Fi Philosopher** - Logical, thoughtful
-4. **British Wit** - Dry, clever
-5. **Minimalist Zen** - Focused, no fluff
+1. **Original Perfect Pair** — Sharp wit, mix of comedy styles
+2. **Office Comedy Fan** — Supportive, wholesome
+3. **Sci-Fi Philosopher** — Logical, thoughtful
+4. **British Wit** — Dry, clever
+5. **Minimalist Zen** — Focused, no fluff
 
 See all: [`cursor-versions/modern/.cursor/rules/examples/`](cursor-versions/modern/.cursor/rules/examples/)
 
-## ✏️ Adding References
+## Adding References
 
-### Method 1: Edit YAML Directly (Recommended)
+### Edit YAML Directly (Recommended)
 
 ```bash
 # Edit the file
 open source/references.yaml
 
-# Add your show to core or rotating_pool
-
-# Sync
+# Add your show to core or rotating_pool, then sync
 ./scripts/sync.sh
 ```
 
-### Method 2: Use the Interactive Skill (Coming Soon)
+### Use the Interactive Skill (Claude Code)
 
-```bash
-# Claude Code
-/add-reference
-
-# Answer questions, it updates references.yaml for you
+```
+/update-perfect-pair
 ```
 
-## 📁 File Structure
+## File Structure
 
 ```
 perfect-pair-creator/
 ├── source/
-│   ├── references.yaml              # ✏️  Your reference library (EDIT THIS)
-│   └── perfect-pair-base.md         # Template
+│   ├── references.yaml              # Your reference library (EDIT THIS)
+│   ├── config.yaml                  # Personality settings (EDIT THIS)
+│   └── perfect-pair-base.md         # Template with {{PLACEHOLDER}} substitution
 ├── scripts/
-│   ├── sync.sh                      # 🚀 Main command (build + deploy)
-│   ├── build.sh                     # Generate from references
-│   └── deploy.sh                    # Deploy to platforms
+│   ├── sync.sh                      # Main command (venv + build + deploy)
+│   ├── build.py                     # Python build script (primary)
+│   ├── deploy.sh                    # Deploy to all 4 tools
+│   └── build.sh                     # Legacy (not used by sync)
 ├── generated/
-│   └── perfect-pair-current.md      # Auto-generated output
+│   ├── perfect-pair-current.md      # Auto-generated output
+│   └── rotation-state.json          # Tracks active rotating refs
 ├── cursor-versions/
-│   └── modern/.cursor/rules/        # Cursor formats
+│   └── modern/.cursor/rules/        # Cursor formats and examples
 └── skills/
-    └── create-perfect-pair/         # Claude Code skill
+    ├── update-perfect-pair/         # Interactive customization skill
+    └── create-perfect-pair/         # Generate new styles skill
 ```
 
-## 🔄 Reference Rotation (Coming Soon)
+## Deploy Targets
 
-As your library grows, we'll automatically rotate references to manage context:
+### Cursor (Global Rules)
+- Path: `~/.cursor/rules/perfect-pair.mdc`
+- Format: Markdown with YAML frontmatter (`alwaysApply: true`)
+- Applies to all projects automatically
 
-- Keep 4-5 core favorites always active
-- Rotate 5 others weekly from the pool
-- Smart rotation based on usage patterns
-- Keep context under control
-
-## 💡 Common Workflows
-
-### Daily: Add a New Show
-
-```bash
-# 1. Edit
-open source/references.yaml
-# Add "Community" to rotating_pool
-
-# 2. Sync
-./scripts/sync.sh
-
-# Done! New references available everywhere
-```
-
-### Weekly: Update Rotating Refs (Future)
-
-```bash
-./scripts/rotate.sh
-```
-
-### Share with Team
-
-```bash
-git add source/references.yaml
-git commit -m "Added Community and 30 Rock"
-git push
-
-# Team pulls and syncs
-git pull && ./scripts/sync.sh
-```
-
-## 🎯 Installation Details
-
-### Cursor (Global)
-
-Deploys to `~/.cursor/rules/perfect-pair.mdc`
-- Works in all projects automatically
-- Can override per-project if needed
-
-### Claude Code (Plugin)
-
-Deploys to `~/.claude/plugins/user/perfect-pair-output-style/`
-- Applies to all sessions via SessionStart hook
+### Claude Code (Plugin Hook)
+- Path: `~/.claude/plugins/user/perfect-pair-output-style/`
+- Format: SessionStart hook outputting JSON with `additionalContext`
 - Restart Claude Code to see changes
 
-## 🛠️ Requirements
+### Gemini CLI (Global Context)
+- Path: `~/.gemini/perfect-pair-style.md`
+- Format: Plain markdown with `@import` in `~/.gemini/GEMINI.md`
+- New sessions pick up changes automatically
 
-- Bash (for scripts)
-- Git (for cloning/updates)
-- Cursor IDE (any version)
-- Claude Code CLI (for Claude Code support)
+### Codex CLI (Global Instructions)
+- Path: `~/.codex/AGENTS.md`
+- Format: Plain markdown (YAML frontmatter stripped)
+- New sessions pick up changes automatically
 
-## 🤝 Contributing
+## Requirements
+
+- Python 3 (for build script)
+- Bash (for deploy/sync scripts)
+- At least one of: Cursor IDE, Claude Code CLI, Gemini CLI, Codex CLI
+
+## Contributing
 
 Have ideas? PRs welcome!
 
@@ -217,13 +193,13 @@ Ideas:
 - Smart rotation implementation
 - Usage tracking
 - More pre-made styles
-- Integration with other AI tools
+- Additional AI tool integrations
 
-## 📄 License
+## License
 
-MIT - Use it, share it, make it your own!
+MIT — Use it, share it, make it your own!
 
-## 🙏 Credits
+## Credits
 
 Created because coding should be fun, and your programming partner should get your jokes.
 
@@ -234,4 +210,4 @@ Inspired by every dev who's ever said "I've made a huge mistake" while looking a
 **Quick Links:**
 - [Workflow Guide](WORKFLOW.md)
 - [Cursor Setup](cursor-versions/CURSOR-README.md)
-- [GitHub Repo](https://github.com/joethorngren/perfect-pair-creator)
+- [GitHub Repo](https://github.com/joethorngren/perfect-pair)

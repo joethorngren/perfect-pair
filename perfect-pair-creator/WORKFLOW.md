@@ -1,18 +1,14 @@
 # Perfect Pair Workflow Guide
 
-Your streamlined workflow for managing your Perfect Pair style across Claude Code and Cursor.
+Your streamlined workflow for managing your Perfect Pair style across Cursor, Claude Code, Gemini CLI, and Codex CLI.
 
-## 🎯 Quick Start
+## Quick Start
 
 ### 1. Edit Your References
 
 Edit `source/references.yaml` to add/remove shows:
 
-```bash
-# Edit in your favorite editor
-code source/references.yaml
-
-# Add to core (always included):
+```yaml
 core:
   - name: "Your Favorite Show"
     type: "show"
@@ -20,7 +16,6 @@ core:
     examples:
       - "Example quote or situation"
 
-# Or add to rotating pool:
 rotating_pool:
   - name: "Another Show"
     type: "show"
@@ -29,168 +24,152 @@ rotating_pool:
       - "Example usage"
 ```
 
-### 2. Build & Deploy
+### 2. Adjust Personality (Optional)
+
+Edit `source/config.yaml` to tune the output tone:
+
+```yaml
+style_settings:
+  roast_level: 3        # 1=minimal, 4=maximum roasting
+  agile_intensity: 3    # 1=aware, 4=evangelist
+  pushback_style: 3     # 1=trust, 4=devil's advocate
+  formality: 2          # 1=professional, 4=best friend
+```
+
+### 3. Build & Deploy
 
 ```bash
-# From the perfect-pair-creator directory
 ./scripts/sync.sh
 ```
 
-That's it! Your changes are now in:
-- Claude Code (restart to see changes)
-- Cursor (copy to your project)
+Changes are now live in all 4 tools:
+- **Cursor** — Immediate (new projects)
+- **Claude Code** — Restart to see changes
+- **Gemini CLI** — New session or `/memory refresh`
+- **Codex CLI** — New session
 
-## 📂 File Structure
+## File Structure
 
 ```
 perfect-pair-creator/
 ├── source/
-│   ├── references.yaml              # ✏️  EDIT THIS - Your reference library
-│   ├── perfect-pair-base.md         # Template (rarely edited)
-│   └── config.yaml                  # Rotation settings (future)
+│   ├── references.yaml              # Your reference library (EDIT THIS)
+│   ├── config.yaml                  # Personality settings (EDIT THIS)
+│   └── perfect-pair-base.md         # Template (rarely edited)
 ├── generated/
-│   ├── perfect-pair-current.md      # 🤖 Generated output
+│   ├── perfect-pair-current.md      # Generated output
 │   └── rotation-state.json          # Tracks active refs
 └── scripts/
-    ├── sync.sh                       # 🚀 Main command (build + deploy)
-    ├── build.sh                      # Build from sources
-    └── deploy.sh                     # Deploy to platforms
+    ├── sync.sh                      # Main command (venv + build + deploy)
+    ├── build.py                     # Python build (primary)
+    ├── deploy.sh                    # Deploy to all 4 tools
+    └── build.sh                     # Legacy (not used)
 ```
 
-## 🔄 Daily Workflow
-
-### Option A: Manual Sync (Recommended)
-
-```bash
-# 1. Edit your references
-code source/references.yaml
-
-# 2. Sync everywhere
-./scripts/sync.sh
-
-# Done!
-```
-
-### Option B: Watch Mode (Future)
-
-```bash
-# Auto-sync on file changes
-./scripts/watch.sh
-```
-
-## 📝 Common Tasks
+## Daily Workflow
 
 ### Add a New Reference
 
 ```bash
-# Edit references.yaml
+# 1. Edit references
 code source/references.yaml
+# Add "Community" to rotating_pool
 
-# Add to core or rotating_pool, then sync
+# 2. Sync everywhere
 ./scripts/sync.sh
+
+# Done! Available in all 4 tools
 ```
 
-### Test Your Changes
+### Change Personality
 
 ```bash
-# Build and check output
-./scripts/build.sh
+# 1. Edit config
+code source/config.yaml
+# Change roast_level from 3 to 2
 
-# Review generated file
+# 2. Sync
+./scripts/sync.sh
+
+# Output tone changes across all tools
+```
+
+### Test Before Deploying
+
+```bash
+# Build only (no deploy)
+.venv/bin/python scripts/build.py
+
+# Review the generated output
 cat generated/perfect-pair-current.md
 
-# Deploy when ready
+# If it looks good, deploy
 ./scripts/deploy.sh
 ```
 
-### Use in Cursor
+## Common Tasks
 
-Good news - it's already deployed globally! The deploy script puts it at `~/.cursor/rules/` which applies to all your projects automatically.
+### Move a Reference to Core
 
-**To override per-project:**
-```bash
-# Create project-specific rules that override global
-mkdir -p <your-project>/.cursor/rules
-code <your-project>/.cursor/rules/custom.mdc
-```
+1. Cut the entry from `rotating_pool:` in `source/references.yaml`
+2. Paste it under `core:`
+3. Run `./scripts/sync.sh`
 
-**Cursor rule priority:**
-1. Project rules (`.cursor/rules/` in project)
-2. Global rules (`~/.cursor/rules/`)
-3. Default behavior
+### Adjust Roast Level
 
-## 🔄 Reference Rotation (Coming Soon)
+Edit `source/config.yaml`:
+- **Level 1** — Gentle, encouraging feedback
+- **Level 2** — Light teasing, mostly supportive
+- **Level 3** — Solid roasting with love (default)
+- **Level 4** — Maximum roast, comedy roast energy
 
-### Current State
-Right now, all core + first 5 rotating refs are included.
-
-### Future: Smart Rotation
+### Preview Without Deploying
 
 ```bash
-# Rotate to next set of references
-./scripts/rotate.sh
-
-# See what's active
-./scripts/status.sh
-
-# Set up weekly auto-rotation
-./scripts/setup-cron.sh weekly
+.venv/bin/python scripts/build.py
+cat generated/perfect-pair-current.md
 ```
 
-This will automatically:
-- Keep core references always active
-- Rotate 5 references from the pool weekly
-- Keep context size manageable
-- Track which refs you use most
+## Deploy Target Details
 
-## 💡 Tips
+| Tool | Path | When Changes Apply |
+|------|------|--------------------|
+| Cursor | `~/.cursor/rules/perfect-pair.mdc` | New projects immediately |
+| Claude Code | `~/.claude/plugins/user/perfect-pair-output-style/` | After restart |
+| Gemini CLI | `~/.gemini/perfect-pair-style.md` | New session |
+| Codex CLI | `~/.codex/AGENTS.md` | New session |
+
+### dotfiles-ai Users
+
+If your tool configs are managed by `~/.dotfiles-ai/` via GNU Stow, `deploy.sh` automatically detects the symlinks and writes to the repo paths instead. No extra steps needed.
+
+## Tips
 
 1. **Core vs Rotating**: Put your top 3-5 favorites in `core`, rest in `rotating_pool`
-2. **Edit Once**: Change `references.yaml`, sync everywhere
-3. **Test First**: Run `build.sh` to preview before deploying
+2. **Edit Once, Deploy Everywhere**: Change source files, run `sync.sh`
+3. **Test First**: Run `build.py` to preview before deploying
 4. **Version Control**: Commit your changes to track evolution
-5. **Share**: Push to GitHub, others can use your references!
+5. **Config Matters**: `config.yaml` settings actually change the output — experiment with different levels
 
-## 🎬 Example Session
-
-```bash
-# Morning: Add new show you discovered
-code source/references.yaml
-# Added "Community" to rotating_pool
-
-# Sync it
-./scripts/sync.sh
-
-# Restart Claude Code
-# Now "Community" references are available!
-
-# Copy to Cursor project
-cp cursor-versions/modern/.cursor/rules/perfect-pair.mdc ~/projects/my-app/.cursor/rules/
-
-# Code all day with your updated Perfect Pair! 🎉
-```
-
-## 🚀 Advanced: CI/CD (Future)
+## Sharing with Team
 
 ```bash
-# Auto-deploy on git push
-./scripts/setup-githooks.sh
-
-# Now every commit auto-syncs your style
-```
-
-## 🤝 Sharing with Team
-
-```bash
-# Share your reference library
-git add source/references.yaml
-git commit -m "Updated references with new shows"
+git add source/references.yaml source/config.yaml
+git commit -m "Updated references and personality settings"
 git push
 
 # Team members pull and sync
 git pull
 ./scripts/sync.sh
 ```
+
+## Reference Rotation (Coming Soon)
+
+As your library grows beyond 15-20 entries:
+- Core references stay always active
+- 5 rotating refs cycle weekly from the pool
+- Tracked in `generated/rotation-state.json`
+- Smart rotation based on usage patterns
 
 ---
 

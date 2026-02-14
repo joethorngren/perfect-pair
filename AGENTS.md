@@ -6,7 +6,7 @@ Primary instruction file for **OpenAI Codex CLI**. Also readable by Gemini CLI a
 
 ## Project Overview
 
-**Perfect Pair** is a personalized AI pair programming output style system. It generates and deploys witty, culturally-referenced output styles from structured YAML sources to Cursor IDE and Claude Code.
+**Perfect Pair** is a personalized AI pair programming output style system. It generates and deploys witty, culturally-referenced output styles from structured YAML sources to Cursor IDE, Claude Code, Gemini CLI, and Codex CLI.
 
 ## Document Inventory
 
@@ -16,7 +16,7 @@ Primary instruction file for **OpenAI Codex CLI**. Also readable by Gemini CLI a
 |------|------|
 | `perfect-pair.md` | Standalone reference version of the complete output style |
 | `perfect-pair-creator/source/references.yaml` | All cultural references (single source of truth) |
-| `perfect-pair-creator/source/config.yaml` | Personality settings |
+| `perfect-pair-creator/source/config.yaml` | Personality settings (drives output tone) |
 | `perfect-pair-creator/CLAUDE.md` | Build system architecture guide |
 
 ## Architecture Overview
@@ -24,19 +24,19 @@ Primary instruction file for **OpenAI Codex CLI**. Also readable by Gemini CLI a
 ### Build Pipeline
 
 ```
-source/references.yaml → build.sh → generated/perfect-pair-current.md → deploy.sh → platforms
+source/references.yaml + config.yaml → build.py (venv) → generated/perfect-pair-current.md → deploy.sh → 4 tools
 ```
 
 ### Components
 
-1. **Source Layer** — YAML reference library + personality config + base template
-2. **Build Layer** — Shell script generates complete style markdown from sources
-3. **Deploy Layer** — Transforms and copies to platform-specific locations
+1. **Source Layer** — YAML reference library + personality config + markdown template
+2. **Build Layer** — Python script (build.py) generates style markdown via template substitution
+3. **Deploy Layer** — Bash script adapts and copies to 4 platform-specific locations
 
 ### Data Entities
 
 - Reference (core or rotating, with name, type, usage, examples)
-- Config (roast_level, agile_intensity, pushback_style, formality)
+- Config (roast_level, agile_intensity, pushback_style, formality — all 1-4 scales)
 - RotationState (active rotating references, last_active dates)
 
 ### Deploy Targets
@@ -44,7 +44,11 @@ source/references.yaml → build.sh → generated/perfect-pair-current.md → de
 | Target | Path | Format |
 |--------|------|--------|
 | Cursor (Global) | `~/.cursor/rules/perfect-pair.mdc` | Markdown + YAML frontmatter |
-| Claude Code (Plugin) | `~/.claude/plugins/user/perfect-pair-output-style/` | SessionStart hook (bash) |
+| Claude Code (Plugin) | `~/.claude/plugins/user/perfect-pair-output-style/` | SessionStart hook (JSON) |
+| Gemini CLI (Global) | `~/.gemini/perfect-pair-style.md` | `@import` in GEMINI.md |
+| Codex CLI (Global) | `~/.codex/AGENTS.md` | Global instructions file |
+
+All targets are dotfiles-ai stow-aware.
 
 ## Key Design Principles
 
@@ -52,6 +56,7 @@ source/references.yaml → build.sh → generated/perfect-pair-current.md → de
 2. **Idempotent Deployment** — Safe to run deploy multiple times. No data loss.
 3. **Context Management** — Core + rotating pool prevents context bloat as references grow.
 4. **Platform Agnostic Generation** — Build produces neutral markdown; deploy adapts per platform.
+5. **Config-Driven Personality** — config.yaml settings (roast, agile, pushback, formality) actively shape output.
 
 ---
 
@@ -69,8 +74,8 @@ Validate that generated output correctly reflects the source configuration.
 2. **Rotating pool compliance** — Exactly 5 (or configured number) rotating refs active
 3. **Content accuracy** — Reference names, usage descriptions, and examples match YAML source
 4. **Template consistency** — Output follows the expected section structure
-5. **Config alignment** — Personality settings (when wired) match config.yaml values
-6. **Deploy target format** — Cursor .mdc has valid YAML frontmatter; Claude Code hook is valid bash
+5. **Config alignment** — Personality settings from config.yaml are reflected in output tone
+6. **Deploy target format** — Cursor .mdc has valid YAML frontmatter; Claude Code hook outputs valid JSON; Gemini has `@import`; Codex has AGENTS.md
 
 ### Key Rules to Enforce
 
@@ -104,31 +109,32 @@ Validate that generated output correctly reflects the source configuration.
 
 Build and maintain the build/deploy pipeline:
 
-1. **build.sh** — Reads references.yaml, generates complete style markdown
-2. **deploy.sh** — Copies generated output to Cursor and Claude Code locations
-3. **sync.sh** — Orchestrates build + deploy
-4. **build.py** — Alternative Python build path (not currently active)
+1. **build.py** — Primary build script. Reads references.yaml, config.yaml, rotation-state.json, and template. Generates output via `{{PLACEHOLDER}}` substitution.
+2. **deploy.sh** — Copies generated output to all 4 tool locations (Cursor, Claude Code, Gemini, Codex)
+3. **sync.sh** — Orchestrates venv setup + build + deploy
+4. **build.sh** — Legacy build path (hardcoded heredoc). Kept for reference, not used by sync.
 
 ### Your Standards
 
 **Language and tools:**
-- Bash for all scripts (POSIX-compatible where practical)
-- YAML parsing via grep/sed/awk in bash, or PyYAML in Python path
+- Python 3 + PyYAML for build (managed via venv and requirements.txt)
+- Bash for deploy and sync scripts
 - Scripts must be idempotent — safe to run multiple times
 - Scripts must create directories if missing
 - No destructive operations on user data
+- Deploy must detect dotfiles-ai stow symlinks
 
 **Testing:**
 - Verify generated output is non-empty after build
-- Verify deploy targets exist after deploy
-- Check YAML frontmatter validity for Cursor output
+- Verify all deploy targets exist after deploy
+- Check for unreplaced `{{PLACEHOLDERS}}` in output
 
 ### Key Rules
 
-1. `build.sh` is the active build path — `sync.sh` calls it, not `build.py`
-2. Template is currently embedded as a heredoc in `build.sh`
-3. `config.yaml` is not yet parsed — don't break the non-wired state
-4. Deploy must handle both fresh installs and updates
+1. `build.py` is the primary build path — `sync.sh` calls it via venv
+2. Template lives in `source/perfect-pair-base.md` with `{{PLACEHOLDER}}` syntax
+3. config.yaml settings drive output personality (roast, agile, pushback, formality)
+4. Deploy handles all 4 targets and is dotfiles-ai stow-aware
 
 ---
 
@@ -141,8 +147,8 @@ Build and maintain the build/deploy pipeline:
 Design and refine the output style content:
 
 - **References** — Cultural references in `source/references.yaml`
-- **Templates** — Style structure in `source/perfect-pair-base.md` and the build.sh heredoc
-- **Personality** — Settings in `source/config.yaml`
+- **Templates** — Style structure in `source/perfect-pair-base.md`
+- **Personality** — Settings in `source/config.yaml` (actively drives output)
 - **Example styles** — Pre-made variants in `cursor-versions/modern/.cursor/rules/examples/`
 - **Skills** — Interactive Claude Code skills in `skills/`
 
@@ -158,12 +164,12 @@ Design and refine the output style content:
 - Tone should be conversational, not formal
 - References should feel natural, never forced
 - Push-back should be constructive, never dismissive
-- Roast level should match config (when wired)
+- Roast level should match config.yaml setting
 
 **Content rules:**
 - References go in `source/references.yaml`, never hardcoded in scripts
 - New reference categories need both core and rotating_pool consideration
-- Style changes must be tested via `build.sh` before deploy
+- Style changes must be tested via build + deploy before shipping
 
 ### Reference Structure
 
@@ -194,18 +200,20 @@ rotating_pool:
 
 | Prefix | Domain |
 |--------|--------|
-| TST-BUILD | Build pipeline (build.sh, build.py) |
-| TST-DEPLOY | Deployment to Cursor and Claude Code |
+| TST-BUILD | Build pipeline (build.py) |
+| TST-DEPLOY | Deployment to all 4 tools |
 | TST-REF | Reference library consistency |
 | TST-STYLE | Output style quality and structure |
+| TST-CONFIG | config.yaml personality settings |
 | TST-ROTATE | Rotation logic (when implemented) |
 
 ### Test Layers
 
 1. **Unit tests** — YAML parsing, reference extraction, template substitution
-2. **Integration tests** — Full build pipeline (source → generated output)
+2. **Integration tests** — Full build pipeline (source to generated output)
 3. **Deployment tests** — Verify files land in correct locations with correct format
 4. **Content tests** — Generated output has expected sections and references
+5. **Config tests** — Changing config.yaml values produces different output
 
 ### Critical Test Scenarios
 
@@ -214,26 +222,31 @@ rotating_pool:
 - Build includes all core references in output
 - Build includes exactly N rotating references
 - Build fails gracefully with malformed YAML
+- No unreplaced `{{PLACEHOLDERS}}` in output
 
 **Deployment:**
 - Deploy creates Cursor .mdc with valid YAML frontmatter
-- Deploy creates Claude Code hook as valid bash script
+- Deploy creates Claude Code hook that outputs valid JSON
+- Deploy creates Gemini style file and adds `@import` to GEMINI.md
+- Deploy creates Codex AGENTS.md
 - Deploy is idempotent (running twice produces same result)
-- Deploy creates directories if they don't exist
+- Deploy detects dotfiles-ai stow symlinks correctly
 
-**Reference Library:**
-- No reference appears in both core and rotating_pool
-- All references have required fields (name, type, usage, examples)
-- Core references never exceed the configured limit
+**Config-Driven Output:**
+- Changing roast_level changes roast section and example count
+- Changing agile_intensity changes agile section content
+- Changing pushback_style changes pushback guidance
+- Changing formality changes communication tone
 
 ### Launch Gate Tests
 
 Before any release:
 - [ ] Build completes without errors
 - [ ] All core references present in output
-- [ ] Cursor .mdc has valid frontmatter
-- [ ] Claude Code hook is valid bash
+- [ ] No unreplaced placeholders
+- [ ] All 4 deploy targets produce valid output
 - [ ] No duplicate references across core and rotating pool
+- [ ] Config changes produce different output
 
 ---
 
@@ -251,13 +264,13 @@ Before any release:
 
 ```bash
 # Implement with Codex
-codex "Act as the build engineer. Wire config.yaml parsing into build.sh."
+codex "Act as the build engineer. Add a new deploy target for VS Code."
 
 # Review with Claude
 claude "Run spec-checker against generated/perfect-pair-current.md"
 
 # Explore with Gemini
-gemini "Review scripts/build.sh for edge cases in YAML parsing"
+gemini "Review scripts/build.py for edge cases in YAML parsing"
 ```
 
 ### Cross-Reference Workflow

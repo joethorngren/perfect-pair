@@ -4,9 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Perfect Pair** is a personalized AI pair programming output style system that brings witty cultural references (TV shows, comedians, etc.) into code conversations. It includes a build pipeline that generates and deploys output styles from structured YAML sources to both Cursor IDE and Claude Code.
-
-This repository is currently in **active development** — the core build system works, with planned enhancements for smart rotation, config-driven generation, and multi-platform support.
+**Perfect Pair** is a personalized AI pair programming output style system that brings witty cultural references (TV shows, comedians, etc.) into code conversations. It includes a build pipeline that generates and deploys output styles from structured YAML sources to four AI coding tools.
 
 ## Document Inventory
 
@@ -24,30 +22,49 @@ This repository is currently in **active development** — the core build system
 | File | Role |
 |------|------|
 | `perfect-pair-creator/source/references.yaml` | All cultural references — core + rotating pool |
-| `perfect-pair-creator/source/config.yaml` | Personality settings (roast level, agile intensity, etc.) |
-| `perfect-pair-creator/source/perfect-pair-base.md` | Template structure (currently embedded in build.sh) |
+| `perfect-pair-creator/source/config.yaml` | Personality settings (roast level, agile intensity, pushback style, formality) |
+| `perfect-pair-creator/source/perfect-pair-base.md` | Template with `{{PLACEHOLDER}}` substitution |
 
 ## Architecture
 
 ### Build Pipeline
 
 ```
-source/references.yaml  ──┐
-source/config.yaml      ──┼──> scripts/build.sh ──> generated/perfect-pair-current.md
-source/perfect-pair-base.md ┘
-                              ↓
-                        scripts/deploy.sh
-                              ↓
-                    ┌─────────┴─────────┐
-                    ↓                   ↓
-        ~/.cursor/rules/          ~/.claude/plugins/
-        perfect-pair.mdc          perfect-pair-output-style/
+source/references.yaml    ──┐
+source/config.yaml        ──┼──> build.py ──> generated/perfect-pair-current.md
+source/perfect-pair-base.md ┘         (via venv + PyYAML)
+                                          ↓
+                                    scripts/deploy.sh
+                                          ↓
+                    ┌──────────┬──────────┼──────────┐
+                    ↓          ↓          ↓          ↓
+             ~/.cursor/  ~/.claude/  ~/.gemini/  ~/.codex/
+             rules/      plugins/   style.md    AGENTS.md
 ```
 
-### Two Build Paths
+### Primary Build Path
 
-- `scripts/build.sh` — Shell script with the template as a heredoc. **Active build path** used by `sync.sh`.
-- `scripts/build.py` — Python script using `source/perfect-pair-base.md` as a template with `{{PLACEHOLDER}}` substitution. **Not currently wired into the sync pipeline.**
+`scripts/build.py` is the primary build script. It:
+- Reads `references.yaml` for cultural references (core + active rotating)
+- Reads `config.yaml` for personality settings that drive output tone
+- Reads `rotation-state.json` for which rotating refs are active
+- Uses `perfect-pair-base.md` as the template with `{{PLACEHOLDER}}` substitution
+- Warns if any placeholders remain unreplaced
+
+`scripts/sync.sh` orchestrates the full pipeline: creates a venv, installs PyYAML, runs build.py, then runs deploy.sh.
+
+`scripts/build.sh` is the legacy build path (hardcoded heredoc, does not read sources). Kept for reference but not used by sync.sh.
+
+### Config-Driven Personality
+
+`source/config.yaml` settings actively drive the generated output:
+
+| Setting | Range | Effect |
+|---------|-------|--------|
+| `roast_level` | 1-4 | Controls roast guidance text and number of examples |
+| `agile_intensity` | 1-4 | Scales agile section from practical tips to evangelist |
+| `pushback_style` | 1-4 | Ranges from trust-based to devil's advocate |
+| `formality` | 1-4 | Adjusts tone from professional to best-friend casual |
 
 ### Reference Library System
 
@@ -56,39 +73,42 @@ source/perfect-pair-base.md ┘
 
 ### Deploy Targets
 
-- **Cursor**: `~/.cursor/rules/perfect-pair.mdc` (auto-applies to all projects)
-- **Claude Code**: `~/.claude/plugins/user/perfect-pair-output-style/hooks-handlers/session-start.sh`
+| Target | Path | Format |
+|--------|------|--------|
+| **Cursor** | `~/.cursor/rules/perfect-pair.mdc` | Markdown + YAML frontmatter (`alwaysApply: true`) |
+| **Claude Code** | `~/.claude/plugins/user/perfect-pair-output-style/` | SessionStart hook (JSON-wrapped bash) |
+| **Gemini CLI** | `~/.gemini/perfect-pair-style.md` | `@import` in global GEMINI.md |
+| **Codex CLI** | `~/.codex/AGENTS.md` | Global instructions file |
+
+All targets are **dotfiles-ai stow-aware** — deploy.sh detects symlinks and writes to the `~/.dotfiles-ai/` repo paths when stow management is detected.
 
 ## Key Commands
 
 ```bash
 cd perfect-pair-creator
 
-# Full build + deploy cycle
+# Full build + deploy cycle (all 4 tools)
 ./scripts/sync.sh
 
 # Build only (generates generated/perfect-pair-current.md)
-./scripts/build.sh
+.venv/bin/python scripts/build.py
 
-# Deploy only (pushes to ~/.cursor/rules/ and ~/.claude/plugins/)
+# Deploy only (pushes to all 4 tool locations)
 ./scripts/deploy.sh
 ```
 
 ## Key Design Principles
 
 1. **Single Source of Truth** — All references live in `source/references.yaml`. Edit there, rebuild, done.
-2. **Idempotent Deployment** — `deploy.sh` can be run multiple times safely. Overwrites existing files, creates dirs if missing, never deletes user data.
-3. **Context Management** — Core + rotating pool architecture prevents context bloat as the reference library grows.
-4. **Platform Agnostic Generation** — Build step produces platform-neutral markdown; deploy step transforms for each target.
+2. **Idempotent Deployment** — `deploy.sh` can be run multiple times safely. Never deletes user data.
+3. **Context Management** — Core + rotating pool architecture prevents context bloat.
+4. **Platform Agnostic Generation** — Build produces platform-neutral markdown; deploy adapts per target.
+5. **dotfiles-ai Integration** — Deploy detects stow symlinks and writes to repo paths transparently.
 
 ## Don't Edit Directly
 
-- `generated/perfect-pair-current.md` — build output, overwritten by build.sh
+- `generated/perfect-pair-current.md` — build output, overwritten by build.py
 - `cursor-versions/modern/.cursor/rules/perfect-pair.mdc` — overwritten by deploy.sh
-
-## Config.yaml Is Not Yet Wired
-
-`source/config.yaml` defines personality settings (roast level, agile intensity, pushback style, formality) but `build.sh` does not read it. These settings are documented-only for now.
 
 ## Custom Agents (`.claude/agents/`)
 

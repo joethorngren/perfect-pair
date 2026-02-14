@@ -4,36 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Perfect Pair Creator is a system for generating personalized AI pair programming styles that deploy to both Cursor IDE and Claude Code. It uses a reference library architecture with a build/deploy pipeline that transforms YAML configuration into platform-specific output styles.
+Perfect Pair Creator is a system for generating personalized AI pair programming styles that deploy to Cursor IDE, Claude Code, Gemini CLI, and Codex CLI. It uses a reference library architecture with a Python build pipeline that transforms YAML configuration into platform-specific output styles.
 
 ## Architecture
 
 ### Build Pipeline
 
 ```
-source/references.yaml  ──┐
-source/config.yaml      ──┼──> scripts/build.sh ──> generated/perfect-pair-current.md
-source/perfect-pair-base.md ┘
-                              ↓
-                        scripts/deploy.sh
-                              ↓
-                    ┌─────────┴─────────┐
-                    ↓                   ↓
-        ~/.cursor/rules/          ~/.claude/plugins/
-        perfect-pair.mdc          perfect-pair-output-style/
+source/references.yaml    ──┐
+source/config.yaml        ──┼──> scripts/build.py ──> generated/perfect-pair-current.md
+source/perfect-pair-base.md ┘    (via .venv + PyYAML)
+                                          ↓
+                                    scripts/deploy.sh
+                                          ↓
+              ┌──────────┬──────────┬──────────┐
+              ↓          ↓          ↓          ↓
+       ~/.cursor/  ~/.claude/  ~/.gemini/  ~/.codex/
+       rules/      plugins/   style.md    AGENTS.md
 ```
 
 The system has three phases:
 
 1. **Source**: Reference library (YAML) + personality config + base template
-2. **Build**: Generate complete style markdown from sources
-3. **Deploy**: Transform and copy to platform-specific locations
+2. **Build**: Python generates complete style markdown from sources via `{{PLACEHOLDER}}` substitution
+3. **Deploy**: Adapts and copies to 4 platform-specific locations
 
 ### Single Source of Truth
 
 - `source/references.yaml` - All cultural references (shows, movies, comedians)
-- `source/config.yaml` - Personality settings (roast level, agile intensity, etc.)
-- `source/perfect-pair-base.md` - Template structure (currently embedded in build.sh)
+- `source/config.yaml` - Personality settings that actively drive output tone
+- `source/perfect-pair-base.md` - Template with `{{PLACEHOLDER}}` substitution points
 
 ### Reference Library System
 
@@ -50,21 +50,40 @@ References are divided into two categories:
 - Located under `rotating_pool:` in references.yaml
 - Tracks `last_active` date for rotation logic
 
-This design solves the context management problem: as users add more references, we can rotate which ones are active while keeping core favorites constant.
+### Config-Driven Personality
 
-### Dual Deployment Targets
+`source/config.yaml` settings actively drive the generated output:
+
+| Setting | Range | Effect |
+|---------|-------|--------|
+| `roast_level` | 1-4 | Controls roast guidance text and number of examples |
+| `agile_intensity` | 1-4 | Scales agile section from practical tips to evangelist |
+| `pushback_style` | 1-4 | Ranges from trust-based to devil's advocate |
+| `formality` | 1-4 | Adjusts tone from professional to best-friend casual |
+
+### Deploy Targets
 
 **Cursor (Global Rules)**
 - Deploys to: `~/.cursor/rules/perfect-pair.mdc`
-- Format: Markdown with YAML frontmatter
+- Format: Markdown with YAML frontmatter (`alwaysApply: true`)
 - Scope: All projects automatically
-- Can be overridden per-project in `.cursor/rules/`
 
 **Claude Code (Plugin Hook)**
 - Deploys to: `~/.claude/plugins/user/perfect-pair-output-style/`
-- Format: SessionStart hook (bash script that outputs markdown)
+- Format: SessionStart hook (bash script outputting JSON with `hookSpecificOutput.additionalContext`)
 - Scope: All Claude Code sessions
-- Requires restart to see changes
+
+**Gemini CLI (Global Context)**
+- Deploys to: `~/.gemini/perfect-pair-style.md` with `@import` in `~/.gemini/GEMINI.md`
+- Format: Plain markdown (YAML frontmatter stripped)
+- Scope: All Gemini sessions
+
+**Codex CLI (Global Instructions)**
+- Deploys to: `~/.codex/AGENTS.md`
+- Format: Plain markdown (YAML frontmatter stripped)
+- Scope: All Codex sessions
+
+All targets are **dotfiles-ai stow-aware** — deploy.sh detects symlinks into `~/.dotfiles-ai/` and writes to the repo paths directly.
 
 ## Key Commands
 
@@ -75,8 +94,8 @@ This design solves the context management problem: as users add more references,
 ./scripts/sync.sh
 
 # Or run separately:
-./scripts/build.sh    # Generate from references.yaml
-./scripts/deploy.sh   # Deploy to Cursor + Claude Code
+.venv/bin/python scripts/build.py    # Generate from sources
+./scripts/deploy.sh                   # Deploy to all 4 tools
 ```
 
 ### Editing References
@@ -97,33 +116,43 @@ rotating_pool:
 
 After editing, run `./scripts/sync.sh` to rebuild and deploy.
 
+### Adjusting Personality
+
+Edit `source/config.yaml`:
+```yaml
+style_settings:
+  roast_level: 3        # 1=minimal, 4=maximum roasting
+  agile_intensity: 3    # 1=aware, 4=evangelist
+  pushback_style: 3     # 1=trust, 4=devil's advocate
+  formality: 2          # 1=professional, 4=best friend
+```
+
+After editing, run `./scripts/sync.sh` to rebuild and deploy.
+
 ### Interactive Skills
 
 Two skills are available in `skills/`:
 
 **`/update-perfect-pair`** - Comprehensive customization
 - Add/remove references
-- Adjust roast level (1-4)
-- Adjust agile intensity (1-4)
-- Adjust push-back style (1-4)
-- Adjust formality (1-4)
+- Adjust personality settings
 - Interactive prompts for all changes
 
 **`/create-perfect-pair`** - Generate completely new styles
 - For creating variant styles from scratch
-- Used to create the example styles
 
 ## Critical Files
 
 ### Source Files
 - `source/references.yaml` - **EDIT THIS** to add/remove references
-- `source/config.yaml` - Personality settings (future: will be read by build script)
-- `source/perfect-pair-base.md` - Template (currently unused, embedded in build.sh)
+- `source/config.yaml` - **EDIT THIS** to adjust personality
+- `source/perfect-pair-base.md` - Template with `{{PLACEHOLDER}}` substitution
 
 ### Build Scripts
-- `scripts/build.sh` - Reads references.yaml, generates output
-- `scripts/deploy.sh` - Copies to Cursor + Claude Code locations
-- `scripts/sync.sh` - Wrapper: build + deploy
+- `scripts/build.py` - **Primary build path**. Reads all sources, generates output.
+- `scripts/deploy.sh` - Deploys to all 4 tool locations
+- `scripts/sync.sh` - Wrapper: venv setup + build + deploy
+- `scripts/build.sh` - Legacy (hardcoded heredoc, not used by sync)
 
 ### Generated
 - `generated/perfect-pair-current.md` - Build output (don't edit directly)
@@ -135,12 +164,19 @@ Two skills are available in `skills/`:
 
 ## Important Patterns
 
-### Build Script Embeds Content
+### Template-Based Generation
 
-`build.sh` currently has the template embedded as a heredoc. This means:
-- Changes to style structure require editing `build.sh`
-- The build script is the source of truth for output format
-- Future: should read from `source/perfect-pair-base.md` template
+`build.py` reads `source/perfect-pair-base.md` as a template and replaces placeholders:
+- `{{DESCRIPTION_REFS}}` — comma-separated list of active reference names
+- `{{PHILOSOPHY_OPENING}}` — opening paragraph with active reference callbacks
+- `{{REFERENCES_LIST}}` — bullet-point list of active references with usage
+- `{{ROAST_GUIDANCE}}` — roast section guidance (driven by `roast_level`)
+- `{{ROAST_EXAMPLES}}` — roast examples (count driven by `roast_level`)
+- `{{PUSHBACK_GUIDANCE}}` — pushback section (driven by `pushback_style`)
+- `{{AGILE_GUIDANCE}}` — agile section (driven by `agile_intensity`)
+- `{{FORMALITY_NOTE}}` — formality note (driven by `formality`)
+
+Unreplaced placeholders trigger a build warning.
 
 ### Deployment is Idempotent
 
@@ -148,13 +184,11 @@ Two skills are available in `skills/`:
 - Overwrites existing files
 - Creates directories if missing
 - Never deletes user data
+- Gemini `@import` is added only once (idempotent check)
 
-### Config.yaml is Not Yet Read
+### dotfiles-ai Integration
 
-`source/config.yaml` exists but isn't currently parsed by `build.sh`. Future enhancement would:
-1. Parse config.yaml in build.sh
-2. Adjust output based on settings (more/fewer roast examples, etc.)
-3. Allow `./scripts/sync.sh` to apply personality changes
+Deploy targets at `~/.cursor/rules/`, `~/.claude/plugins/`, `~/.gemini/`, and `~/.codex/` are typically stow symlinks managed by `~/.dotfiles-ai/`. Deploy.sh detects this and writes to the repo paths directly, keeping dotfiles-ai clean.
 
 ## Future Architecture
 
@@ -168,23 +202,6 @@ When the reference library grows beyond 15-20 entries:
 
 Script location: `scripts/rotate.sh` (to be created)
 
-### Config-Driven Generation (Planned)
-
-Currently personality settings in `config.yaml` are documented but not used. Future:
-- Parse config.yaml in build.sh
-- Generate more/fewer examples based on roast_level
-- Adjust language based on agile_intensity
-- Modify tone based on formality
-
-### Multi-Platform Support (Planned)
-
-Currently supports Cursor and Claude Code. Extensible to:
-- Gemini CLI
-- GitHub Copilot
-- Other AI coding tools
-
-Would require new deploy targets in `deploy.sh`.
-
 ## Working with This Codebase
 
 ### Adding a New Reference
@@ -192,27 +209,25 @@ Would require new deploy targets in `deploy.sh`.
 1. Edit `source/references.yaml`
 2. Add to `core:` or `rotating_pool:`
 3. Run `./scripts/sync.sh`
-4. Restart Claude Code to see changes (Cursor picks up automatically)
+4. All 4 tools pick up changes (Claude Code needs restart)
 
-### Changing Build Output Format
+### Changing Personality
 
-1. Edit the heredoc in `scripts/build.sh` (lines 14-300+)
-2. Modify template structure
-3. Run `./scripts/build.sh` to test
-4. Run `./scripts/deploy.sh` when ready
+1. Edit `source/config.yaml` — adjust any setting (1-4 scale)
+2. Run `./scripts/sync.sh`
+3. Output tone changes across all 4 tools
 
-### Adding a New Personality Setting
+### Changing Template Structure
 
-1. Add to `source/config.yaml` under `style_settings:`
-2. Update `scripts/build.sh` to parse the setting
-3. Modify output generation based on the setting
-4. Update `/update-perfect-pair` skill to prompt for it
+1. Edit `source/perfect-pair-base.md`
+2. If adding a new `{{PLACEHOLDER}}`, add the generator in `scripts/build.py`
+3. Run `./scripts/sync.sh`
 
 ### Testing Changes
 
 ```bash
 # Build and check output
-./scripts/build.sh
+.venv/bin/python scripts/build.py
 cat generated/perfect-pair-current.md
 
 # Deploy to test locally
@@ -220,19 +235,9 @@ cat generated/perfect-pair-current.md
 
 # For Cursor: Changes apply immediately in new projects
 # For Claude Code: Restart to see changes
+# For Gemini: /memory refresh or new session
+# For Codex: New session
 ```
-
-## Skills Usage
-
-Skills are copied to `~/.claude/skills/` for Claude Code use.
-
-When updating a skill:
-1. Edit `skills/[skill-name]/SKILL.md`
-2. Copy to `~/.claude/skills/`:
-   ```bash
-   cp -r skills/update-perfect-pair ~/.claude/skills/
-   ```
-3. Restart Claude Code or start new session
 
 ## Repository Structure Context
 
@@ -246,8 +251,4 @@ cursor-versions/ # Cursor-specific files and examples
   skills/        # Cursor 2.4+ skills
 ```
 
-The repo contains both:
-- **Source files** for the build system (this is the active development)
-- **Example styles** in `cursor-versions/modern/.cursor/rules/examples/`
-
-When making changes, edit source files and rebuild rather than editing examples directly.
+When making changes, edit source files and rebuild rather than editing generated output directly.
