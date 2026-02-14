@@ -119,7 +119,7 @@ When executed, this skill will:
 ## Important Notes
 
 - This skill requires the perfect-pair-creator repo to be set up
-- The repo should be at: `/Users/oh_henry/Code_Complete/ai_output_style/perfect-pair-creator/`
+- The repo should be at: `/Users/oh_henry/Code_Complete/perfect-pair/perfect-pair-creator/`
 - If the path is different, let me know and I'll update accordingly
 
 ## After Adding
