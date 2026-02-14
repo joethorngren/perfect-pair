@@ -67,15 +67,20 @@ cat > "$CLAUDE_DEPLOY_BASE/.claude-plugin/plugin.json" << 'PLUGIN_JSON'
 }
 PLUGIN_JSON
 
-# Write hooks config
+# Write hooks config (matcher group wrapper required by Claude Code)
 cat > "$CLAUDE_DEPLOY_BASE/hooks/hooks.json" << 'HOOKS_JSON'
 {
   "description": "Perfect Pair output style hook",
   "hooks": {
     "SessionStart": [
       {
-        "type": "command",
-        "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/session-start.sh"
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks-handlers/session-start.sh"
+          }
+        ]
       }
     ]
   }
