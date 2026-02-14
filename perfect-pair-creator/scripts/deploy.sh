@@ -136,7 +136,8 @@ else
     mkdir -p "$CURSOR_DEPLOY_DIR"
 fi
 
-# Create .mdc file with YAML frontmatter
+# Create .mdc file with single YAML frontmatter block
+# Strip the generated file's frontmatter (between --- markers) to avoid double frontmatter
 {
     cat << 'CURSOR_HEADER'
 ---
@@ -145,7 +146,7 @@ alwaysApply: true
 ---
 
 CURSOR_HEADER
-    cat "$SOURCE_FILE"
+    awk 'BEGIN{skip=0} /^---$/{skip++; next} skip<2{next} {print}' "$SOURCE_FILE"
 } > "$CURSOR_DEPLOY_DIR/perfect-pair.mdc"
 
 echo "  Cursor global rules updated"
