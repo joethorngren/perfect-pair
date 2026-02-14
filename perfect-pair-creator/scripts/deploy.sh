@@ -127,13 +127,15 @@ CURSOR_MDC="$CURSOR_GLOBAL_DIR/perfect-pair.mdc"
 
 echo "Deploying to Cursor (global)..."
 
-# Detect dotfiles-ai stow management for Cursor
-CURSOR_DEPLOY_DIR="$CURSOR_GLOBAL_DIR"
-if is_stow_managed "$CURSOR_MDC" && [ -d "$CURSOR_DOTFILES_DIR" ]; then
-    echo "  Detected dotfiles-ai stow management, writing to ~/.dotfiles-ai/cursor/..."
-    CURSOR_DEPLOY_DIR="$CURSOR_DOTFILES_DIR"
-else
-    mkdir -p "$CURSOR_DEPLOY_DIR"
+# Cursor doesn't follow symlinks for .mdc rules, so always write a real file
+# to ~/.cursor/rules/ regardless of stow management. Also update dotfiles-ai
+# copy if present (for version tracking, not for Cursor to read).
+mkdir -p "$CURSOR_GLOBAL_DIR"
+
+# If stow created a symlink here, remove it so we can write a real file
+if [ -L "$CURSOR_MDC" ]; then
+    rm "$CURSOR_MDC"
+    echo "  Removed stow symlink (Cursor needs a real file)"
 fi
 
 # Create .mdc file with single YAML frontmatter block
@@ -147,9 +149,15 @@ alwaysApply: true
 
 CURSOR_HEADER
     awk 'BEGIN{skip=0} /^---$/{skip++; next} skip<2{next} {print}' "$SOURCE_FILE"
-} > "$CURSOR_DEPLOY_DIR/perfect-pair.mdc"
+} > "$CURSOR_MDC"
 
-echo "  Cursor global rules updated"
+echo "  Cursor global rules updated (real file)"
+
+# Also update dotfiles-ai copy for version tracking
+if [ -d "$CURSOR_DOTFILES_DIR" ]; then
+    cp "$CURSOR_MDC" "$CURSOR_DOTFILES_DIR/perfect-pair.mdc"
+    echo "  dotfiles-ai copy updated"
+fi
 
 # Also update repo version for reference/sharing
 CURSOR_REPO_DIR="$ROOT_DIR/cursor-versions/modern/.cursor/rules"
@@ -235,11 +243,7 @@ if [ "$CLAUDE_DEPLOY_BASE" = "$CLAUDE_DOTFILES_BASE" ]; then
 else
     echo "  - Claude Code: ~/.claude/plugins/user/perfect-pair-output-style/"
 fi
-if [ "$CURSOR_DEPLOY_DIR" = "$CURSOR_DOTFILES_DIR" ]; then
-    echo "  - Cursor: ~/.dotfiles-ai/cursor/.cursor/rules/perfect-pair.mdc"
-else
-    echo "  - Cursor: ~/.cursor/rules/perfect-pair.mdc (global)"
-fi
+echo "  - Cursor: ~/.cursor/rules/perfect-pair.mdc (real file, not symlink)"
 if [ "$GEMINI_DEPLOY_DIR" = "$GEMINI_DOTFILES_DIR" ]; then
     echo "  - Gemini CLI: ~/.dotfiles-ai/gemini-cli/.gemini/perfect-pair-style.md"
 else
