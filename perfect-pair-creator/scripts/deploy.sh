@@ -7,26 +7,55 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 GENERATED_DIR="$ROOT_DIR/generated"
 SOURCE_FILE="$GENERATED_DIR/perfect-pair-current.md"
+DOTFILES_AI_DIR="$HOME/.dotfiles-ai"
 
-echo "🚀 Deploying Perfect Pair style..."
+echo "Deploying Perfect Pair style..."
 
 # Check if source exists
 if [ ! -f "$SOURCE_FILE" ]; then
-    echo "❌ Error: $SOURCE_FILE not found. Run ./build.sh first!"
+    echo "Error: $SOURCE_FILE not found. Run ./build.sh first!"
     exit 1
 fi
 
-# Deploy to Claude Code plugin
-CLAUDE_PLUGIN_BASE="$HOME/.claude/plugins/user/perfect-pair-output-style"
-echo "📦 Deploying to Claude Code..."
+# Check if a path (file or within a directory) is a stow symlink into dotfiles-ai.
+# For files: checks the file itself.
+# For directories: checks any file within (up to 2 levels deep).
+is_stow_managed() {
+    local path="$1"
+    if [ -L "$path" ] && [[ "$(readlink "$path")" == *".dotfiles-ai"* ]]; then
+        return 0
+    fi
+    if [ -d "$path" ]; then
+        for f in "$path"/* "$path"/*/*; do
+            if [ -L "$f" ] && [[ "$(readlink "$f")" == *".dotfiles-ai"* ]]; then
+                return 0
+            fi
+        done
+    fi
+    return 1
+}
 
-# Create plugin directory structure
-mkdir -p "$CLAUDE_PLUGIN_BASE/.claude-plugin"
-mkdir -p "$CLAUDE_PLUGIN_BASE/hooks"
-mkdir -p "$CLAUDE_PLUGIN_BASE/hooks-handlers"
+# ─── Deploy to Claude Code ─────────────────────────────────────────
+
+CLAUDE_PLUGIN_BASE="$HOME/.claude/plugins/user/perfect-pair-output-style"
+CLAUDE_DOTFILES_BASE="$DOTFILES_AI_DIR/claude-code/.claude/plugins/user/perfect-pair-output-style"
+
+echo "Deploying to Claude Code..."
+
+# Detect dotfiles-ai stow management
+CLAUDE_DEPLOY_BASE="$CLAUDE_PLUGIN_BASE"
+if is_stow_managed "$CLAUDE_PLUGIN_BASE" && [ -d "$CLAUDE_DOTFILES_BASE" ]; then
+    echo "  Detected dotfiles-ai stow management, writing to ~/.dotfiles-ai/claude-code/..."
+    CLAUDE_DEPLOY_BASE="$CLAUDE_DOTFILES_BASE"
+else
+    # Create directory structure only when not stow-managed
+    mkdir -p "$CLAUDE_DEPLOY_BASE/.claude-plugin"
+    mkdir -p "$CLAUDE_DEPLOY_BASE/hooks"
+    mkdir -p "$CLAUDE_DEPLOY_BASE/hooks-handlers"
+fi
 
 # Write plugin manifest
-cat > "$CLAUDE_PLUGIN_BASE/.claude-plugin/plugin.json" << 'PLUGIN_JSON'
+cat > "$CLAUDE_DEPLOY_BASE/.claude-plugin/plugin.json" << 'PLUGIN_JSON'
 {
   "name": "perfect-pair-output-style",
   "description": "Your perfect pair programming partner with references to The Office, Parks & Rec, Arrested Development, Chappelle Show, Key & Peele, SNL, and more",
@@ -39,7 +68,7 @@ cat > "$CLAUDE_PLUGIN_BASE/.claude-plugin/plugin.json" << 'PLUGIN_JSON'
 PLUGIN_JSON
 
 # Write hooks config
-cat > "$CLAUDE_PLUGIN_BASE/hooks/hooks.json" << 'HOOKS_JSON'
+cat > "$CLAUDE_DEPLOY_BASE/hooks/hooks.json" << 'HOOKS_JSON'
 {
   "description": "Perfect Pair output style hook",
   "hooks": {
@@ -53,58 +82,91 @@ cat > "$CLAUDE_PLUGIN_BASE/hooks/hooks.json" << 'HOOKS_JSON'
 }
 HOOKS_JSON
 
-# Update the session-start.sh script with new content
-cat > "$CLAUDE_PLUGIN_BASE/hooks-handlers/session-start.sh" << 'SCRIPT_START'
-#!/bin/bash
+# Generate session-start.sh with python3 JSON wrapper
+# Claude Code SessionStart hooks REQUIRE JSON output:
+# {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "..."}}
+{
+    cat << 'SCRIPT_HEADER'
+#!/usr/bin/env bash
 
-cat <<'EOF'
-SCRIPT_START
+# Output the Perfect Pair style instructions as JSON additionalContext
+# Format must match Claude Code's SessionStart hook spec
 
-# Append the content (skipping the first line "# Perfect Pair...")
-tail -n +2 "$SOURCE_FILE" >> "$CLAUDE_PLUGIN_BASE/hooks-handlers/session-start.sh"
+cat << 'CONTENT_EOF' | python3 -c "
+import json, sys
+content = sys.stdin.read()
+result = {
+    'hookSpecificOutput': {
+        'hookEventName': 'SessionStart',
+        'additionalContext': content
+    }
+}
+print(json.dumps(result))
+"
+SCRIPT_HEADER
+    # Append content (skip header line and blank line after it)
+    tail -n +3 "$SOURCE_FILE"
+    echo "CONTENT_EOF"
+    echo ""
+    echo "exit 0"
+} > "$CLAUDE_DEPLOY_BASE/hooks-handlers/session-start.sh"
 
-cat >> "$CLAUDE_PLUGIN_BASE/hooks-handlers/session-start.sh" << 'SCRIPT_END'
-EOF
-SCRIPT_END
+chmod +x "$CLAUDE_DEPLOY_BASE/hooks-handlers/session-start.sh"
+echo "  Claude Code plugin updated"
 
-chmod +x "$CLAUDE_PLUGIN_BASE/hooks-handlers/session-start.sh"
-echo "   ✅ Claude Code plugin updated"
+# ─── Deploy to Cursor ───────────────────────────────────────────────
 
-# Deploy to Cursor (global)
 CURSOR_GLOBAL_DIR="$HOME/.cursor/rules"
-mkdir -p "$CURSOR_GLOBAL_DIR"
+CURSOR_DOTFILES_DIR="$DOTFILES_AI_DIR/cursor/.cursor/rules"
+CURSOR_MDC="$CURSOR_GLOBAL_DIR/perfect-pair.mdc"
 
-echo "📦 Deploying to Cursor (global)..."
+echo "Deploying to Cursor (global)..."
 
-# Create .mdc file with frontmatter
-cat > "$CURSOR_GLOBAL_DIR/perfect-pair.mdc" << 'CURSOR_START'
+# Detect dotfiles-ai stow management for Cursor
+CURSOR_DEPLOY_DIR="$CURSOR_GLOBAL_DIR"
+if is_stow_managed "$CURSOR_MDC" && [ -d "$CURSOR_DOTFILES_DIR" ]; then
+    echo "  Detected dotfiles-ai stow management, writing to ~/.dotfiles-ai/cursor/..."
+    CURSOR_DEPLOY_DIR="$CURSOR_DOTFILES_DIR"
+else
+    mkdir -p "$CURSOR_DEPLOY_DIR"
+fi
+
+# Create .mdc file with YAML frontmatter
+{
+    cat << 'CURSOR_HEADER'
 ---
 description: Perfect pair programming partner with witty references and agile mindset
 alwaysApply: true
 ---
 
-CURSOR_START
+CURSOR_HEADER
+    cat "$SOURCE_FILE"
+} > "$CURSOR_DEPLOY_DIR/perfect-pair.mdc"
 
-# Append the content
-cat "$SOURCE_FILE" >> "$CURSOR_GLOBAL_DIR/perfect-pair.mdc"
-
-echo "   ✅ Cursor global rules updated"
+echo "  Cursor global rules updated"
 
 # Also update repo version for reference/sharing
 CURSOR_REPO_DIR="$ROOT_DIR/cursor-versions/modern/.cursor/rules"
 if [ -d "$CURSOR_REPO_DIR" ]; then
-    cp "$CURSOR_GLOBAL_DIR/perfect-pair.mdc" "$CURSOR_REPO_DIR/perfect-pair.mdc"
-    echo "   ✅ Repo version updated (for sharing)"
+    cp "$CURSOR_DEPLOY_DIR/perfect-pair.mdc" "$CURSOR_REPO_DIR/perfect-pair.mdc"
+    echo "  Repo version updated (for sharing)"
 fi
 
 echo ""
-echo "✨ Deployment complete!"
+echo "Deployment complete!"
 echo ""
-echo "📍 Deployed to:"
-echo "   - Claude Code: ~/.claude/plugins/user/perfect-pair-output-style/"
-echo "   - Cursor: ~/.cursor/rules/perfect-pair.mdc (global - applies to all projects)"
+echo "Deployed to:"
+if [ "$CLAUDE_DEPLOY_BASE" = "$CLAUDE_DOTFILES_BASE" ]; then
+    echo "  - Claude Code: ~/.dotfiles-ai/claude-code/...perfect-pair-output-style/"
+else
+    echo "  - Claude Code: ~/.claude/plugins/user/perfect-pair-output-style/"
+fi
+if [ "$CURSOR_DEPLOY_DIR" = "$CURSOR_DOTFILES_DIR" ]; then
+    echo "  - Cursor: ~/.dotfiles-ai/cursor/.cursor/rules/perfect-pair.mdc"
+else
+    echo "  - Cursor: ~/.cursor/rules/perfect-pair.mdc (global)"
+fi
 echo ""
-echo "💡 Next steps:"
-echo "   - Restart Claude Code to see changes"
-echo "   - Cursor will automatically use the global rules in all projects"
-echo "   - Override per-project: Create <project>/.cursor/rules/ with custom rules"
+echo "Next steps:"
+echo "  - Restart Claude Code to see changes"
+echo "  - Cursor will automatically use the global rules in all projects"

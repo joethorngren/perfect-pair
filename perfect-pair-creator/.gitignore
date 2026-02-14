@@ -35,3 +35,8 @@ Temporary Items
 # Temporary files
 tmp/
 temp/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
