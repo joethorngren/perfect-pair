@@ -1,0 +1,26 @@
+{
+  "name": "perfect-pair-creator",
+  "version": "1.0.0",
+  "description": "Create a personalized pair programming output style with your favorite cultural references",
+  "author": "oh_henry",
+  "license": "MIT",
+  "skills": [
+    {
+      "name": "create-perfect-pair",
+      "path": "skills/create-perfect-pair",
+      "description": "Generate a custom perfect-pair output style based on your preferences"
+    }
+  ],
+  "homepage": "https://github.com/yourusername/perfect-pair-creator",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/perfect-pair-creator.git"
+  },
+  "keywords": [
+    "output-style",
+    "pair-programming",
+    "personalization",
+    "custom-style",
+    "claude-code"
+  ]
+}

@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+vendor/
+.venv/
+__pycache__/
+
+# Build output
+dist/
+build/
+out/
+*.egg-info/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tool-specific local settings (user-specific, not shared)
+.claude/settings.local.json
+
+# Logs
+*.log
+logs/
+
+# Nested git repos (perfect-pair-creator has its own .git)
+perfect-pair-creator/.git
