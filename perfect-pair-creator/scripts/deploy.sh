@@ -35,23 +35,43 @@ is_stow_managed() {
     return 1
 }
 
+# Copy while tolerating symlinked paths that resolve to the same file.
+sync_copy_if_needed() {
+    local src="$1"
+    local dst="$2"
+    if [ -e "$dst" ] && [ "$src" -ef "$dst" ]; then
+        return 0
+    fi
+    cp "$src" "$dst"
+}
+
 # ─── Deploy to Claude Code ─────────────────────────────────────────
 
-CLAUDE_PLUGIN_BASE="$HOME/.claude/plugins/user/perfect-pair-output-style"
-CLAUDE_DOTFILES_BASE="$DOTFILES_AI_DIR/claude-code/.claude/plugins/user/perfect-pair-output-style"
+CLAUDE_HOME_DIR="$HOME/.claude"
+CLAUDE_DOTFILES_DIR="$DOTFILES_AI_DIR/claude-code/.claude"
 
 echo "Deploying to Claude Code..."
 
 # Detect dotfiles-ai stow management
-CLAUDE_DEPLOY_BASE="$CLAUDE_PLUGIN_BASE"
-if is_stow_managed "$CLAUDE_PLUGIN_BASE" && [ -d "$CLAUDE_DOTFILES_BASE" ]; then
-    echo "  Detected dotfiles-ai stow management, writing to ~/.dotfiles-ai/claude-code/..."
-    CLAUDE_DEPLOY_BASE="$CLAUDE_DOTFILES_BASE"
-else
-    # Create directory structure only when not stow-managed
-    mkdir -p "$CLAUDE_DEPLOY_BASE/.claude-plugin"
-    mkdir -p "$CLAUDE_DEPLOY_BASE/hooks"
-    mkdir -p "$CLAUDE_DEPLOY_BASE/hooks-handlers"
+CLAUDE_DEPLOY_ROOT="$CLAUDE_HOME_DIR"
+CLAUDE_MIRROR_DOTFILES=0
+if is_stow_managed "$CLAUDE_HOME_DIR/settings.json" && [ -d "$CLAUDE_DOTFILES_DIR" ]; then
+    echo "  Detected dotfiles-ai stow management, syncing runtime + ~/.dotfiles-ai/claude-code mirror..."
+    CLAUDE_MIRROR_DOTFILES=1
+fi
+CLAUDE_DEPLOY_BASE="$CLAUDE_DEPLOY_ROOT/plugins/user/perfect-pair-output-style"
+CLAUDE_DOTFILES_PLUGIN_BASE="$CLAUDE_DOTFILES_DIR/plugins/user/perfect-pair-output-style"
+
+# Ensure Claude directories exist
+mkdir -p "$CLAUDE_DEPLOY_BASE/.claude-plugin"
+mkdir -p "$CLAUDE_DEPLOY_BASE/hooks"
+mkdir -p "$CLAUDE_DEPLOY_BASE/hooks-handlers"
+mkdir -p "$CLAUDE_DEPLOY_ROOT/output-styles"
+if [ "$CLAUDE_MIRROR_DOTFILES" -eq 1 ]; then
+    mkdir -p "$CLAUDE_DOTFILES_PLUGIN_BASE/.claude-plugin"
+    mkdir -p "$CLAUDE_DOTFILES_PLUGIN_BASE/hooks"
+    mkdir -p "$CLAUDE_DOTFILES_PLUGIN_BASE/hooks-handlers"
+    mkdir -p "$CLAUDE_DOTFILES_DIR/output-styles"
 fi
 
 # Write plugin manifest
@@ -59,7 +79,7 @@ cat > "$CLAUDE_DEPLOY_BASE/.claude-plugin/plugin.json" << 'PLUGIN_JSON'
 {
   "name": "perfect-pair-output-style",
   "description": "Your perfect pair programming partner with references to The Office, Parks & Rec, Arrested Development, Chappelle Show, Key & Peele, SNL, and more",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "oh_henry"
   },
@@ -117,7 +137,74 @@ SCRIPT_HEADER
 } > "$CLAUDE_DEPLOY_BASE/hooks-handlers/session-start.sh"
 
 chmod +x "$CLAUDE_DEPLOY_BASE/hooks-handlers/session-start.sh"
-echo "  Claude Code plugin updated"
+echo "  Claude Code plugin files updated (for --plugin-dir/dev usage)"
+
+# Keep dotfiles copy in sync for stow/version tracking
+if [ "$CLAUDE_MIRROR_DOTFILES" -eq 1 ]; then
+    sync_copy_if_needed "$CLAUDE_DEPLOY_BASE/.claude-plugin/plugin.json" "$CLAUDE_DOTFILES_PLUGIN_BASE/.claude-plugin/plugin.json"
+    sync_copy_if_needed "$CLAUDE_DEPLOY_BASE/hooks/hooks.json" "$CLAUDE_DOTFILES_PLUGIN_BASE/hooks/hooks.json"
+    sync_copy_if_needed "$CLAUDE_DEPLOY_BASE/hooks-handlers/session-start.sh" "$CLAUDE_DOTFILES_PLUGIN_BASE/hooks-handlers/session-start.sh"
+    chmod +x "$CLAUDE_DOTFILES_PLUGIN_BASE/hooks-handlers/session-start.sh"
+    echo "  dotfiles-ai plugin mirror updated"
+fi
+
+# Deploy as an Output Style (supported path for current Claude Code releases)
+CLAUDE_STYLE_FILE="$CLAUDE_DEPLOY_ROOT/output-styles/perfect-pair.md"
+{
+    cat << 'STYLE_HEADER'
+---
+name: perfect-pair
+description: Perfect Pair collaborative coding style
+keep-coding-instructions: true
+---
+
+STYLE_HEADER
+    awk 'BEGIN{skip=0} /^---$/{skip++; next} skip<2{next} {print}' "$SOURCE_FILE"
+} > "$CLAUDE_STYLE_FILE"
+echo "  Claude Code output style updated"
+if [ "$CLAUDE_MIRROR_DOTFILES" -eq 1 ]; then
+    sync_copy_if_needed "$CLAUDE_STYLE_FILE" "$CLAUDE_DOTFILES_DIR/output-styles/perfect-pair.md"
+    echo "  dotfiles-ai style mirror updated"
+fi
+
+# Set default style if outputStyle is unset (don't override an explicit user choice)
+CLAUDE_SETTINGS_FILE="$CLAUDE_DEPLOY_ROOT/settings.json"
+STYLE_SET_RESULT=$(python3 - "$CLAUDE_SETTINGS_FILE" << 'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if path.exists():
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        print("invalid")
+        sys.exit(0)
+else:
+    data = {}
+
+current = data.get("outputStyle")
+if current and current != "perfect-pair":
+    print(f"preserve:{current}")
+elif current == "perfect-pair":
+    print("already")
+else:
+    data["outputStyle"] = "perfect-pair"
+    path.write_text(json.dumps(data, indent=2) + "\n")
+    print("set")
+PY
+)
+
+if [ "$STYLE_SET_RESULT" = "set" ]; then
+    echo "  Claude settings updated: outputStyle=perfect-pair"
+elif [ "$STYLE_SET_RESULT" = "already" ]; then
+    echo "  Claude settings already use outputStyle=perfect-pair"
+elif [[ "$STYLE_SET_RESULT" == preserve:* ]]; then
+    echo "  Claude settings kept existing outputStyle (${STYLE_SET_RESULT#preserve:})"
+else
+    echo "  Warning: Could not parse Claude settings JSON; style file was still deployed"
+fi
 
 # ─── Deploy to Cursor ───────────────────────────────────────────────
 
@@ -162,7 +249,7 @@ fi
 # Also update repo version for reference/sharing
 CURSOR_REPO_DIR="$ROOT_DIR/cursor-versions/modern/.cursor/rules"
 if [ -d "$CURSOR_REPO_DIR" ]; then
-    cp "$CURSOR_DEPLOY_DIR/perfect-pair.mdc" "$CURSOR_REPO_DIR/perfect-pair.mdc"
+    cp "$CURSOR_MDC" "$CURSOR_REPO_DIR/perfect-pair.mdc"
     echo "  Repo version updated (for sharing)"
 fi
 
@@ -238,10 +325,10 @@ echo ""
 echo "Deployment complete!"
 echo ""
 echo "Deployed to:"
-if [ "$CLAUDE_DEPLOY_BASE" = "$CLAUDE_DOTFILES_BASE" ]; then
-    echo "  - Claude Code: ~/.dotfiles-ai/claude-code/...perfect-pair-output-style/"
-else
-    echo "  - Claude Code: ~/.claude/plugins/user/perfect-pair-output-style/"
+echo "  - Claude Code style: ~/.claude/output-styles/perfect-pair.md"
+echo "  - Claude plugin files: ~/.claude/plugins/user/perfect-pair-output-style/"
+if [ "$CLAUDE_MIRROR_DOTFILES" -eq 1 ]; then
+    echo "  - Claude dotfiles mirror: ~/.dotfiles-ai/claude-code/.claude/{output-styles,plugins/user/perfect-pair-output-style/}"
 fi
 echo "  - Cursor: ~/.cursor/rules/perfect-pair.mdc (real file, not symlink)"
 if [ "$GEMINI_DEPLOY_DIR" = "$GEMINI_DOTFILES_DIR" ]; then
@@ -256,7 +343,7 @@ else
 fi
 echo ""
 echo "Next steps:"
-echo "  - Restart Claude Code to see changes"
+echo "  - Restart Claude Code or run /output-style perfect-pair in your current session"
 echo "  - Cursor will automatically use the global rules in all projects"
 echo "  - Gemini CLI will pick up changes on next session (or /memory refresh)"
 echo "  - Codex CLI will pick up changes on next session"
